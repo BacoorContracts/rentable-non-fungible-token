@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.15;
+pragma solidity 0.8.17;
 
 import "oz-custom/contracts/oz-upgradeable/token/ERC721/extensions/ERC721RentableUpgradeable.sol";
 
@@ -14,18 +14,18 @@ contract RentableCollectible721Upgradeable is
 {
     using SafeCastUpgradeable for uint256;
 
-    ///@dev value is equal to keccak256("Permit(address user,uint256 expires,uint256 deadline,uint256 nonce)")
+    /// @dev value is equal to keccak256("Permit(address user,uint256 expires,uint256 deadline,uint256 nonce)")
     bytes32 private constant _PERMIT_TYPE_HASH =
         0xe1083cc5c80f93a4536f92f8603e7fd41b968f0442697679170436f978397d2f;
 
-    function init(
+    function initialize(
         string calldata name_,
         string calldata symbol_,
         string calldata baseURI_,
         uint256 feeAmt_,
         IERC20Upgradeable feeToken_,
-        IGovernanceV2 governance_,
-        ITreasuryV2 treasury_
+        IAuthority authority_,
+        ITreasury treasury_
     ) external initializer {
         __Collectible_init(
             name_,
@@ -33,9 +33,9 @@ contract RentableCollectible721Upgradeable is
             baseURI_,
             feeAmt_,
             feeToken_,
-            governance_,
+            authority_,
             treasury_,
-            /////@dev value is equal to keccak256("RentableCollectible_v1")
+            /// @dev value is equal to keccak256("RentableCollectible_v1")
             0xb2968efe7e8797044f984fc229747059269f7279ae7d4bb4737458dbb15e0f41
         );
     }
@@ -55,7 +55,6 @@ contract RentableCollectible721Upgradeable is
             revert RentableCollectible__Rented();
         address sender = _msgSender();
         _verify(
-            sender,
             ownerOf(tokenId),
             keccak256(
                 abi.encode(
@@ -121,4 +120,6 @@ contract RentableCollectible721Upgradeable is
     ) internal override(Collectible721Upgradeable, ERC721RentableUpgradeable) {
         super._beforeTokenTransfer(from_, to_, tokenId_);
     }
+
+    uint256[50] private __gap;
 }

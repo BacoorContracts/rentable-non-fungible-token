@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.15;
+pragma solidity 0.8.17;
 
-interface IRentableCollectible {
+import "./ICollectible.sol";
+
+interface IRentableCollectible is ICollectible {
     error RentableCollectible__Rented();
     error RentableCollectible__Expired();
     error RentableCollectible__Unauthorized();

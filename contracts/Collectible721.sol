@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.15;
+pragma solidity 0.8.17;
 
 import "oz-custom/contracts/oz-upgradeable/token/ERC721/extensions/ERC721PermitUpgradeable.sol";
 import "oz-custom/contracts/oz-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
 
 import "./internal-upgradeable/BaseUpgradeable.sol";
-import "./internal-upgradeable/AssetRoyaltyUpgradeable.sol";
-import "./internal-upgradeable/FundForwarderUpgradeable.sol";
+import "oz-custom/contracts/internal-upgradeable/ProtocolFeeUpgradeable.sol";
+import "oz-custom/contracts/internal-upgradeable/FundForwarderUpgradeable.sol";
 
 import "./interfaces/ICollectible.sol";
 
@@ -16,7 +16,7 @@ import "oz-custom/contracts/libraries/StringLib.sol";
 abstract contract Collectible721Upgradeable is
     ICollectible,
     BaseUpgradeable,
-    AssetRoyaltyUpgradeable,
+    ProtocolFeeUpgradeable,
     ERC721PermitUpgradeable,
     FundForwarderUpgradeable,
     ERC721EnumerableUpgradeable
@@ -28,37 +28,24 @@ abstract contract Collectible721Upgradeable is
     using Bytes32Address for address;
 
     bytes32 public version;
-    bytes32 private _baseTokenURIPtr;
-
-    function updateTreasury(ITreasuryV2 treasury_)
-        external
-        override
-        whenPaused
-        onlyRole(Roles.OPERATOR_ROLE)
-    {
-        emit TreasuryUpdated(treasury(), treasury_);
-        _updateTreasury(treasury_);
-    }
+    bytes32 private __baseTokenURIPtr;
 
     function setFee(IERC20Upgradeable feeToken_, uint256 feeAmt_)
         external
-        override
         whenPaused
         onlyRole(Roles.OPERATOR_ROLE)
     {
-        if (!treasury().supportedPayment(feeToken_))
+        if (!ITreasury(vault).supportedPayment(address(feeToken_)))
             revert Collectible__TokenNotSupported();
-        _setfee(feeToken_, feeAmt_);
-        emit FeeChanged();
+        _setRoyalty(feeToken_, uint96(feeAmt_));
     }
 
     function safeMint(address to_, uint256 tokenId_)
         external
+        whenNotPaused
         onlyRole(Roles.PROXY_ROLE)
     {
-        address sender = _msgSender();
-        _safeMint(sender, tokenId_);
-        _transfer(sender, to_, tokenId_);
+        _safeMint(to_, tokenId_);
     }
 
     function mint(address to_, uint256 tokenId_)
@@ -81,24 +68,20 @@ abstract contract Collectible721Upgradeable is
                 ++i;
             }
         }
-        emit BatchMinted(to_, length_);
     }
 
     function safeMintBatch(
         address to_,
         uint256 fromId_,
         uint256 length_
-    ) external override onlyRole(Roles.PROXY_ROLE) {
-        address sender = _msgSender();
+    ) external override whenNotPaused onlyRole(Roles.PROXY_ROLE) {
         for (uint256 i; i < length_; ) {
             unchecked {
-                _safeMint(sender, fromId_);
-                _transfer(sender, to_, fromId_);
+                _safeMint(to_, fromId_);
                 ++fromId_;
                 ++i;
             }
         }
-        emit BatchMinted(to_, length_);
     }
 
     function tokenURI(uint256 tokenId)
@@ -107,7 +90,7 @@ abstract contract Collectible721Upgradeable is
         override
         returns (string memory)
     {
-        return string(abi.encodePacked(_baseTokenURIPtr.read(), tokenId));
+        return string(abi.encodePacked(__baseTokenURIPtr.read(), tokenId));
     }
 
     function supportsInterface(bytes4 interfaceId_)
@@ -132,41 +115,31 @@ abstract contract Collectible721Upgradeable is
         string calldata baseURI_,
         uint256 feeAmt_,
         IERC20Upgradeable feeToken_,
-        IGovernanceV2 governance_,
-        ITreasuryV2 treasury_,
+        IAuthority authority_,
+        ITreasury treasury_,
         bytes32 version_
     ) internal onlyInitializing {
-        __Collectible_init_unchained(
-            name_,
-            symbol_,
-            baseURI_,
-            feeAmt_,
-            feeToken_,
-            governance_,
-            treasury_,
-            version_
-        );
+        __Base_init_unchained(authority_, Roles.TREASURER_ROLE);
+        {
+            IERC20Upgradeable[] memory payments = new IERC20Upgradeable[](1);
+            payments[0] = feeToken_;
+            treasury_.addPayments(payments);
+        }
+        __ERC721_init_unchained(name_, symbol_);
+        __FundForwarder_init_unchained(address(treasury_));
+        __Signable_init(type(Collectible721Upgradeable).name, "1");
+
+        _setRoyalty(feeToken_, uint96(feeAmt_));
+
+        __Collectible_init_unchained(baseURI_, version_);
     }
 
     function __Collectible_init_unchained(
-        string calldata name_,
-        string calldata symbol_,
         string calldata baseURI_,
-        uint256 feeAmt_,
-        IERC20Upgradeable feeToken_,
-        IGovernanceV2 governance_,
-        ITreasuryV2 treasury_,
         bytes32 version_
     ) internal onlyInitializing {
-        __Base_init(governance_, 0);
-        __FundForwarder_init(treasury_);
-        __ERC721_init(name_, symbol_);
-        __EIP712_init(type(Collectible721Upgradeable).name, "2");
-
         version = version_;
-        _setfee(feeToken_, feeAmt_);
-
-        _baseTokenURIPtr = bytes(baseURI_).write();
+        __baseTokenURIPtr = bytes(baseURI_).write();
     }
 
     function _beforeTokenTransfer(
@@ -189,15 +162,16 @@ abstract contract Collectible721Upgradeable is
         if (
             from_ != address(0) &&
             to_ != address(0) &&
-            !governance().hasRole(Roles.MINTER_ROLE, sender)
+            !authority().hasRole(Roles.MINTER_ROLE, sender)
         ) {
             (IERC20Upgradeable feeToken, uint256 feeAmt) = feeInfo();
-            _safeTransferFrom(feeToken, sender, address(treasury()), feeAmt);
+
+            _safeTransferFrom(feeToken, sender, vault, feeAmt);
         }
     }
 
     function _baseURI() internal view virtual override returns (string memory) {
-        return string(_baseTokenURIPtr.read());
+        return string(__baseTokenURIPtr.read());
     }
 
     uint256[48] private __gap;

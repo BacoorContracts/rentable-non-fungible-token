@@ -1,27 +1,22 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.15;
-
+pragma solidity 0.8.17;
 import "oz-custom/contracts/oz-upgradeable/utils/ContextUpgradeable.sol";
 import "oz-custom/contracts/oz-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import "../interfaces/IGovernanceV2.sol";
+import "../interfaces/IAuthority.sol";
 
 import "../libraries/Roles.sol";
 
 error Base__Paused();
-error Base__Unpaused();
+error Base__NotPaused();
 error Base__AlreadySet();
+error Base__Blacklisted();
 error Base__Unauthorized();
-error Base__AuthorizeFailed();
-error Base__UserIsBlacklisted();
 
 abstract contract BaseUpgradeable is ContextUpgradeable, UUPSUpgradeable {
-    bytes32 private _governance;
+    bytes32 private _authority;
 
-    event GovernanceUpdated(
-        IGovernanceV2 indexed from,
-        IGovernanceV2 indexed to
-    );
+    event AuthorityUpdated(IAuthority indexed from, IAuthority indexed to);
 
     modifier onlyRole(bytes32 role) {
         _checkRole(role, _msgSender());
@@ -43,67 +38,59 @@ abstract contract BaseUpgradeable is ContextUpgradeable, UUPSUpgradeable {
         _;
     }
 
-    function updateGovernance(IGovernanceV2 governance_)
+    function updateAuthority(IAuthority authority_)
         external
         onlyRole(Roles.OPERATOR_ROLE)
     {
-        IGovernanceV2 old = governance();
-        if (old == governance_) revert Base__AlreadySet();
-        __updateGovernance(governance_);
-        emit GovernanceUpdated(old, governance_);
+        IAuthority old = authority();
+        if (old == authority_) revert Base__AlreadySet();
+        __updateAuthority(authority_);
+        emit AuthorityUpdated(old, authority_);
     }
 
-    function governance() public view returns (IGovernanceV2 governance_) {
+    function authority() public view returns (IAuthority authority_) {
+        /// @solidity memory-safe-assembly
         assembly {
-            governance_ := sload(_governance.slot)
+            authority_ := sload(_authority.slot)
         }
     }
 
-    function __Base_init(IGovernanceV2 governance_, bytes32 role_)
+    function __Base_init(IAuthority authority_, bytes32 role_)
         internal
         onlyInitializing
     {
-        __Base_init_unchained(governance_, role_);
+        __Base_init_unchained(authority_, role_);
     }
 
-    function __Base_init_unchained(IGovernanceV2 governance_, bytes32 role_)
+    function __Base_init_unchained(IAuthority authority_, bytes32 role_)
         internal
         onlyInitializing
     {
-        if (role_ != 0) {
-            (bool ok, ) = address(governance_).call(
-                abi.encodeWithSelector(
-                    IGovernanceV2.requestAccess.selector,
-                    role_
-                )
-            );
-            if (!ok) revert Base__AuthorizeFailed();
-        }
-
-        __updateGovernance(governance_);
+        if (role_ != 0) authority_.requestAccess(role_);
+        __updateAuthority(authority_);
     }
 
     function _checkBlacklist(address account_) internal view {
-        if (governance().isBlacklisted(account_))
-            revert Base__UserIsBlacklisted();
+        if (authority().isBlacklisted(account_)) revert Base__Blacklisted();
     }
 
     function _checkRole(bytes32 role_, address account_) internal view {
-        if (!governance().hasRole(role_, account_)) revert Base__Unauthorized();
+        if (!authority().hasRole(role_, account_)) revert Base__Unauthorized();
     }
 
-    function __updateGovernance(IGovernanceV2 governance_) private {
+    function __updateAuthority(IAuthority authority_) internal {
+        /// @solidity memory-safe-assembly
         assembly {
-            sstore(_governance.slot, governance_)
+            sstore(_authority.slot, authority_)
         }
     }
 
     function _requirePaused() internal view {
-        if (!governance().paused()) revert Base__Unpaused();
+        if (!authority().paused()) revert Base__NotPaused();
     }
 
     function _requireNotPaused() internal view {
-        if (governance().paused()) revert Base__Paused();
+        if (authority().paused()) revert Base__Paused();
     }
 
     function _authorizeUpgrade(address implement_)
@@ -118,7 +105,7 @@ abstract contract BaseUpgradeable is ContextUpgradeable, UUPSUpgradeable {
         view
         returns (bool)
     {
-        return governance().hasRole(role_, account_);
+        return authority().hasRole(role_, account_);
     }
 
     uint256[49] private __gap;

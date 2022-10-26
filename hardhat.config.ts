@@ -10,19 +10,16 @@ const config: HardhatUserConfig = {
     solidity: {
         version: "0.8.17",
         settings: {
-            metadata: {
-                bytecodeHash: "none",
-            },
             optimizer: {
                 enabled: true,
-                runs: 200,
+                runs: 1_000_000,
             },
         },
     },
     etherscan: {
         apiKey: {
             bscTestnet: process.env.TBSC_API_KEY || "",
-            goerli: process.env.ETH_API_KEY || ""
+            goerli: process.env.ETH_API_KEY || "",
         },
     },
     networks: {
@@ -49,7 +46,7 @@ const config: HardhatUserConfig = {
                 process.env.PRIVATE_KEY !== undefined
                     ? [process.env.PRIVATE_KEY]
                     : [],
-        }
+        },
     },
     contractSizer: {
         alphaSort: true,

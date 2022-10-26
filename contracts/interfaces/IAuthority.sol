@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.15;
+pragma solidity 0.8.17;
 
 import "oz-custom/contracts/oz-upgradeable/access/IAccessControlEnumerableUpgradeable.sol";
 
-import "../internal-upgradeable/interfaces/IBlacklistableUpgradeable.sol";
+import "oz-custom/contracts/internal-upgradeable/interfaces/IBlacklistableUpgradeable.sol";
 
-interface IGovernanceV2 is
+interface IAuthority is
     IBlacklistableUpgradeable,
     IAccessControlEnumerableUpgradeable
 {
     event ProxyAccessGranted(address indexed proxy);
+
+    function setRoleAdmin(bytes32 role, bytes32 adminRole) external;
 
     function pause() external;
 
