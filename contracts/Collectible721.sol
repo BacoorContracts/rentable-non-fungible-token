@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
+import "oz-custom/contracts/oz-upgradeable/utils/structs/BitMapsUpgradeable.sol";
 import "oz-custom/contracts/oz-upgradeable/token/ERC721/extensions/ERC721PermitUpgradeable.sol";
 import "oz-custom/contracts/oz-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
 
@@ -26,9 +27,50 @@ abstract contract Collectible721Upgradeable is
     using StringLib for uint256;
     using Bytes32Address for bytes32;
     using Bytes32Address for address;
+    using BitMapsUpgradeable for BitMapsUpgradeable.BitMap;
+
+    uint256 private constant __INDEX_BITS = 32;
 
     bytes32 public version;
     bytes32 private __baseTokenURIPtr;
+
+    BitMapsUpgradeable.BitMap private __lockedTokens;
+    mapping(uint256 => uint256) public typeIdTrackers;
+
+    modifier notLocked(uint256 tokenId_) {
+        __checkLock(tokenId_);
+        _;
+    }
+
+    function updateTreasury(ITreasury treasury_)
+        external
+        onlyRole(Roles.OPERATOR_ROLE)
+    {
+        vault = address(treasury_);
+    }
+
+    function setBaseURI(string calldata baseURI_)
+        external
+        onlyRole(Roles.OPERATOR_ROLE)
+    {
+        _setBaseURI(baseURI_);
+    }
+
+    function lock(uint256 tokenId_) external notLocked(tokenId_) {
+        if (ownerOf(tokenId_) != _msgSender())
+            revert Collectible721__Unauthorized();
+        __lockedTokens.set(tokenId_);
+
+        emit Locked(tokenId_);
+    }
+
+    function unlock(uint256 tokenId_) external {
+        if (ownerOf(tokenId_) != _msgSender())
+            revert Collectible721__Unauthorized();
+        __lockedTokens.unset(tokenId_);
+
+        emit Unlocked(tokenId_);
+    }
 
     function setFee(IERC20Upgradeable feeToken_, uint256 feeAmt_)
         external
@@ -40,34 +82,43 @@ abstract contract Collectible721Upgradeable is
         _setRoyalty(feeToken_, uint96(feeAmt_));
     }
 
-    function safeMint(address to_, uint256 tokenId_)
+    function safeMint(address to_, uint256 typeId_)
         external
         whenNotPaused
         onlyRole(Roles.PROXY_ROLE)
     {
-        _safeMint(to_, tokenId_);
+        unchecked {
+            _safeMint(
+                to_,
+                (typeId_ << __INDEX_BITS) | typeIdTrackers[typeId_]++
+            );
+        }
     }
 
-    function mint(address to_, uint256 tokenId_)
+    function mint(address to_, uint256 typeId_)
         external
         override
         onlyRole(Roles.MINTER_ROLE)
     {
-        _mint(to_, tokenId_);
+        unchecked {
+            _mint(to_, (typeId_ << __INDEX_BITS) | typeIdTrackers[typeId_]++);
+        }
     }
 
     function mintBatch(
         address to_,
-        uint256 fromId_,
+        uint256 typeId_,
         uint256 length_
     ) external override onlyRole(Roles.MINTER_ROLE) {
+        uint256 ptr = nextIdFromType(typeId_);
         for (uint256 i; i < length_; ) {
             unchecked {
-                _mint(to_, fromId_);
-                ++fromId_;
+                _mint(to_, ptr);
+                ++ptr;
                 ++i;
             }
         }
+        typeIdTrackers[typeId_] = ptr;
     }
 
     function safeMintBatch(
@@ -84,13 +135,28 @@ abstract contract Collectible721Upgradeable is
         }
     }
 
+    function baseURI() external view returns (string memory) {
+        return string(__baseTokenURIPtr.read());
+    }
+
+    function nextIdFromType(uint256 typeId_) public view returns (uint256) {
+        return (typeId_ << __INDEX_BITS) | (typeIdTrackers[typeId_] + 1);
+    }
+
     function tokenURI(uint256 tokenId)
         public
         view
         override
         returns (string memory)
     {
-        return string(abi.encodePacked(__baseTokenURIPtr.read(), tokenId));
+        return
+            string(
+                abi.encodePacked(__baseTokenURIPtr.read(), tokenId.toString())
+            );
+    }
+
+    function isLocked(uint256 tokenId) public view returns (bool) {
+        return __lockedTokens.get(tokenId);
     }
 
     function supportsInterface(bytes4 interfaceId_)
@@ -107,6 +173,10 @@ abstract contract Collectible721Upgradeable is
         return
             type(IERC165Upgradeable).interfaceId == interfaceId_ ||
             super.supportsInterface(interfaceId_);
+    }
+
+    function _setBaseURI(string calldata baseURI_) internal {
+        __baseTokenURIPtr = bytes(baseURI_).write();
     }
 
     function __Collectible_init(
@@ -152,6 +222,7 @@ abstract contract Collectible721Upgradeable is
         override(ERC721EnumerableUpgradeable, ERC721Upgradeable)
     {
         _requireNotPaused();
+        __checkLock(tokenId_);
         super._beforeTokenTransfer(from_, to_, tokenId_);
 
         address sender = _msgSender();
@@ -174,5 +245,9 @@ abstract contract Collectible721Upgradeable is
         return string(__baseTokenURIPtr.read());
     }
 
-    uint256[48] private __gap;
+    function __checkLock(uint256 tokenId_) private view {
+        if (isLocked(tokenId_)) revert Collectible721__AlreadyLocked();
+    }
+
+    uint256[46] private __gap;
 }

@@ -38,7 +38,7 @@ abstract contract BaseUpgradeable is ContextUpgradeable, UUPSUpgradeable {
         _;
     }
 
-    function updateAuthority(IAuthority authority_)
+    function updateGovernance(IAuthority authority_)
         external
         onlyRole(Roles.OPERATOR_ROLE)
     {

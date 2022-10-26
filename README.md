@@ -9,6 +9,7 @@ Smart contracts for gas optimized & scalable **NFT (Non Fungible Token)** and **
 - Blacklist User
 - Authority
 - Treasury
+- Lock tokenId
 - ProtocolFee
 - ERC4907
 - ERC721Enumerable

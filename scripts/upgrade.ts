@@ -6,7 +6,7 @@ dotenv.config();
 
 async function main(): Promise<void> {
     const RentableCollectible721: ContractFactory =
-        await ethers.getContractFactory("RentableCollectible721");
+        await ethers.getContractFactory("RentableCollectible721Upgradeable");
     const rentableCollectible: Contract = await upgrades.upgradeProxy(
         process.env.RNFT || "",
         RentableCollectible721,

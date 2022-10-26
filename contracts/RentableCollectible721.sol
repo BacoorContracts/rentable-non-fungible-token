@@ -14,9 +14,9 @@ contract RentableCollectible721Upgradeable is
 {
     using SafeCastUpgradeable for uint256;
 
-    /// @dev value is equal to keccak256("Permit(address user,uint256 expires,uint256 deadline,uint256 nonce)")
-    bytes32 private constant _PERMIT_TYPE_HASH =
-        0xe1083cc5c80f93a4536f92f8603e7fd41b968f0442697679170436f978397d2f;
+    ///@dev value is equal to keccak256("Permit(address user,uint256 tokenId,uint256 expires,uint256 deadline,uint256 nonce)")
+    bytes32 private constant __PERMIT_RENT_TYPE_HASH =
+        0x791d178915e3bc91599d5bc6c1eab516b25cb66fc0b46b415e2018109bbaa078;
 
     function initialize(
         string calldata name_,
@@ -53,13 +53,15 @@ contract RentableCollectible721Upgradeable is
         UserInfo memory userInfo = _users[tokenId];
         if (userInfo.expires < block.timestamp && userInfo.user != address(0))
             revert RentableCollectible__Rented();
-        address sender = _msgSender();
+        userInfo.user = _msgSender();
+        emit UserUpdated(tokenId, userInfo.user, expires_);
         _verify(
             ownerOf(tokenId),
             keccak256(
                 abi.encode(
-                    _PERMIT_TYPE_HASH,
-                    sender,
+                    __PERMIT_RENT_TYPE_HASH,
+                    userInfo.user,
+                    tokenId,
                     expires_,
                     deadline_,
                     _useNonce(tokenId)
@@ -70,14 +72,10 @@ contract RentableCollectible721Upgradeable is
             s
         );
 
-        userInfo.user = sender;
         unchecked {
             userInfo.expires = (block.timestamp + expires_).toUint96();
         }
-
         _users[tokenId] = userInfo;
-
-        emit UserUpdated(tokenId, sender, expires_);
     }
 
     function setUser(
@@ -86,6 +84,7 @@ contract RentableCollectible721Upgradeable is
         uint64 expires_
     ) public override {
         _requireNotPaused();
+
         if (!_isApprovedOrOwner(_msgSender(), tokenId_))
             revert Rentable__OnlyOwnerOrApproved();
 
