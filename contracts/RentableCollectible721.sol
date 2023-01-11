@@ -89,6 +89,8 @@ contract RentableCollectible721Upgradeable is
             revert Rentable__OnlyOwnerOrApproved();
 
         UserInfo memory info = _users[tokenId_];
+        if (info.expires < block.timestamp && info.user != address(0))
+            revert RentableCollectible__Rented();
         info.user = user_;
         unchecked {
             info.expires = (block.timestamp + expires_).toUint96();
